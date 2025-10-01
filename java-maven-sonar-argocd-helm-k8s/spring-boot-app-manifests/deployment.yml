@@ -16,6 +16,6 @@ spec:
     spec:
       containers:
       - name: spring-boot-app
-        image: abhishekf5/ultimate-cicd:replaceImageTag
+        image: us-central1-docker.pkg.dev/ashess-project-470205/ashess/my-app:replaceImageTag
         ports:
         - containerPort: 8080
