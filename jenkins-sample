@@ -1,0 +1,111 @@
+pipeline {
+  agent any
+  tools {
+      jdk 'jdk17'
+      maven 'maven13'
+  }
+  environment {
+    // Replace with your Google Cloud project ID
+    GOOGLE_CLOUD_PROJECT = 'ashess-project-470205'
+    // Replace with your GKE cluster name and zone
+    GKE_CLUSTER_NAME = 'demo'
+    GKE_CLUSTER_ZONE = 'us-central1-a'
+  }
+  stages {
+    stage('Checkout') {
+      steps {
+        sh 'echo passed'
+        git branch: 'main', url: 'https://github.com/ashessphilip/Jenkins-Zero-To-Hero.git'
+      }
+    }
+    stage('Build and Test') {
+      steps {
+        sh 'ls -ltr'
+        // build the project and create a JAR file
+        sh 'cd java-maven-sonar-argocd-helm-k8s/spring-boot-app && mvn clean package'
+      }
+    }
+    stage('Static Code Analysis') {
+      environment {
+        SONAR_URL = "http://34.148.70.40:9000/"
+      }
+      steps {
+        withCredentials([string(credentialsId: 'sonar-cred', variable: 'SONAR_AUTH_TOKEN')]) {
+          sh 'cd java-maven-sonar-argocd-helm-k8s/spring-boot-app && mvn sonar:sonar -Dsonar.login=$SONAR_AUTH_TOKEN -Dsonar.host.url=${SONAR_URL}'
+        }
+      }
+    }
+    stage('Build and Push Docker Image') {
+      environment {
+        DOCKER_IMAGE = "us-central1-docker.pkg.dev/ashess-project-470205/ashess/my-app:${BUILD_NUMBER}.0.0"
+        // DOCKERFILE_LOCATION = "java-maven-sonar-argocd-helm-k8s/spring-boot-app/Dockerfile"
+        //REGISTRY_CREDENTIALS = credentials('docker-cred')
+      }
+      steps {
+        script {
+            //args '--user root -v /var/run/docker.sock:/var/run/docker.sock'
+            sh 'cd java-maven-sonar-argocd-helm-k8s/spring-boot-app && docker build -t ${DOCKER_IMAGE} .'
+            withCredentials([file(credentialsId: 'gar-cred', variable: 'GCP_KEY_FILE')]) {
+                sh 'gcloud auth activate-service-account --key-file=${GCP_KEY_FILE}'
+                sh 'gcloud auth configure-docker us-central1-docker.pkg.dev'
+                sh 'docker push ${DOCKER_IMAGE}'
+            }
+        }
+      }
+    }
+    stage('Update Deployment File') {
+        environment {
+            GIT_REPO_NAME = "Jenkins-Zero-To-Hero"
+            GIT_USER_NAME = "ashessphilip"
+        }
+        steps {
+            withCredentials([usernamePassword(credentialsId: 'git-cred',usernameVariable: 'username',
+                 passwordVariable: 'password')]) {
+                sh '''
+                    git config user.email "ashessph@gmail.com"
+                    git config user.name "Ashess philip"
+                    BUILD_NUMBER=${BUILD_NUMBER}
+                    sed -i "s/my-app:.*/my-app:${BUILD_NUMBER}.0.0/g" java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
+                    git add java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
+                    git commit -m "Update deployment image to version ${BUILD_NUMBER}"
+                    git push https://$username:$password@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
+                '''
+            }
+        }
+    }
+    stage('Manual Approval') {
+        steps {
+            script {
+                input message: 'Proceed with deployment?', ok: 'Deploy', submitter: 'ashess', timeout: 600
+            }
+        }
+    }
+    stage('Deploy to GKE') {
+        steps {
+            script {
+                // Get GKE cluster credentials
+                sh "gcloud container clusters get-credentials ${GKE_CLUSTER_NAME} --zone ${GKE_CLUSTER_ZONE} --project ${GOOGLE_CLOUD_PROJECT}"
+                // Apply Kubernetes deployment (assuming you have a deployment.yaml)
+                sh "kubectl apply -f java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml"
+                sh "kubectl apply -f java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/service.yml"
+                // Optionally, update the image in the deployment.yaml if needed
+                // sh "kubectl set image deployment/my-app my-container=gcr.io/${GOOGLE_CLOUD_PROJECT}/${ARTIFACT_REGISTRY_REPO}/${IMAGE_NAME}:${IMAGE_TAG}"
+            }
+        }
+    }
+  }
+  post {
+        always {
+            echo 'This will always execute at the end of the pipeline.'
+        }
+        success {
+            echo 'Pipeline completed successfully. Sending notification.'
+            cleanWs()
+            // mail to: 'devs@example.com', subject: 'Pipeline Success', body: '...'
+        }
+        failure {
+            echo 'Pipeline failed. Sending error report.'
+            // slackSend channel: '#ops-room', color: 'danger', message: 'Pipeline failed!'
+        }
+  }
+}
