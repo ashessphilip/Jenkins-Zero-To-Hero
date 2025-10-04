@@ -16,6 +16,6 @@ spec:
     spec:
       containers:
       - name: spring-boot-app
-        image: us-central1-docker.pkg.dev/ashess-project-470205/ashess/my-app:39.0.0
+        image: us-central1-docker.pkg.dev/ashess-project-470205/ashess/my-app:40.0.0
         ports:
         - containerPort: 8080
