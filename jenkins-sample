@@ -12,7 +12,7 @@ pipeline {
     GKE_CLUSTER_ZONE = 'us-central1-a'
   }
   stages {
-    stage('Checkout') {
+    stage('Checkout-scm') {
       steps {
         sh 'echo passed'
         git branch: 'main', url: 'https://github.com/ashessphilip/Jenkins-Zero-To-Hero.git'
