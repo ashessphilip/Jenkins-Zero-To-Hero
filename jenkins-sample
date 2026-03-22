@@ -101,7 +101,7 @@ pipeline {
         success {
             echo 'Pipeline completed successfully. Sending notification.'
             cleanWs()
-            // mail to: 'devs@example.com', subject: 'Pipeline Success', body: '...'
+            // mail to: 'devs1@example.com', subject: 'Pipeline Success', body: '...'
         }
         failure {
             echo 'Pipeline failed. Sending error report.'
